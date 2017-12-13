@@ -6,14 +6,15 @@ import tensorflow as tf
 from scipy import misc
 import numpy as np
 import facenet
+import datetime,time
 import align.detect_face
 
 def main(args):
   print('Creating networks and loading parameters')
   
   with tf.Graph().as_default():
-      gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=args.gpu_memory_fraction)
-      sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options, log_device_placement=False))
+      #gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=args.gpu_memory_fraction)
+      sess = tf.Session()
       with sess.as_default():
           pnet, rnet, onet = align.detect_face.create_mtcnn(sess, None)
   minsize = 20 # minimum size of face
@@ -22,7 +23,17 @@ def main(args):
 
   img = misc.imread(os.path.expanduser(args.image), mode='RGB')
 
+  start_t = time.time()
+  start_c = time.clock()
+
   face_locations, points = align.detect_face.detect_face(img, minsize, pnet, rnet, onet, threshold, factor)
+
+  end_t = time.time()
+  end_c = time.clock()
+
+  total_cpu_time = end_c - start_c
+  total_real_time = end_t - start_t
+  print("The inference time cost: %.2fs" % (total_real_time))
 
   print("I found {} face(s) in this photograph.".format(len(face_locations)))
 

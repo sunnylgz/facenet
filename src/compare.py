@@ -37,7 +37,10 @@ import align.detect_face
 
 def main(args):
 
-    images = load_and_align_data(args.image_files, args.image_size, args.margin, args.gpu_memory_fraction)
+    if args.noalign:
+      images = load_data(args.image_files, args.image_size)
+    else:
+      images = load_and_align_data(args.image_files, args.image_size, args.margin, args.gpu_memory_fraction)
     with tf.Graph().as_default():
 
         with tf.Session() as sess:
@@ -77,6 +80,7 @@ def main(args):
             
 def load_and_align_data(image_paths, image_size, margin, gpu_memory_fraction):
 
+    print("load_and_align_data")
     minsize = 20 # minimum size of face
     threshold = [ 0.6, 0.7, 0.7 ]  # three steps's threshold
     factor = 0.709 # scale factor
@@ -111,6 +115,19 @@ def load_and_align_data(image_paths, image_size, margin, gpu_memory_fraction):
     images = np.stack(img_list)
     return images
 
+def load_data(image_paths, image_size):
+    print("load_data")
+    nrof_samples = len(image_paths)
+    img_list = [None] * nrof_samples
+    for i in range(nrof_samples):
+        img = misc.imread(os.path.expanduser(image_paths[i]), mode='RGB')
+        resized = misc.imresize(img, (image_size, image_size), interp='bilinear')
+        prewhitened = facenet.prewhiten(resized)
+        img_list[i] = prewhitened
+    images = np.stack(img_list)
+    return images
+
+
 def parse_arguments(argv):
     parser = argparse.ArgumentParser()
     
@@ -119,6 +136,9 @@ def parse_arguments(argv):
     parser.add_argument('image_files', type=str, nargs='+', help='Images to compare')
     parser.add_argument('--image_size', type=int,
         help='Image size (height, width) in pixels.', default=160)
+    parser.add_argument('--noalign', action="store_true",
+                        default=False,
+                        help='Dont do face alignment')
     parser.add_argument('--margin', type=int,
         help='Margin for the crop around the bounding box (height, width) in pixels.', default=44)
     parser.add_argument('--gpu_memory_fraction', type=float,
