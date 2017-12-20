@@ -79,16 +79,38 @@ def main(args):
                 feed_dict = { images_placeholder:images, phase_train_placeholder:False }
                 emb_array[start_index:end_index,:] = sess.run(embeddings, feed_dict=feed_dict)
 
-            tpr, fpr, accuracy, val, val_std, far = lfw.evaluate(emb_array,
-                actual_issame, nrof_folds=args.nrof_folds)
+            evaluate(emb_array, actual_issame, nrof_folds=args.nrof_folds)
 
-            print('Accuracy: %1.3f+-%1.3f' % (np.mean(accuracy), np.std(accuracy)))
-            print('Validation rate: %2.5f+-%2.5f @ FAR=%2.5f' % (val, val_std, far))
 
-            auc = metrics.auc(fpr, tpr)
-            print('Area Under Curve (AUC): %1.3f' % auc)
-            eer = brentq(lambda x: 1. - x - interpolate.interp1d(fpr, tpr)(x), 0., 1.)
-            print('Equal Error Rate (EER): %1.3f' % eer)
+def evaluate(embeddings, actual_issame, nrof_folds=10):
+    # Calculate evaluation metrics
+    thresholds = np.arange(0, 4, 0.01)
+    embeddings1 = embeddings[0::2]
+    embeddings2 = embeddings[1::2]
+    tpr, fpr, accuracy = facenet.calculate_roc(thresholds, embeddings1, embeddings2,
+        np.asarray(actual_issame), nrof_folds=nrof_folds)
+    thresholds = np.arange(0, 4, 0.001)
+    val, val_std, far = facenet.calculate_val(thresholds, embeddings1, embeddings2,
+        np.asarray(actual_issame), 1e-3, nrof_folds=nrof_folds)
+
+    print('Accuracy: %1.3f+-%1.3f' % (np.mean(accuracy), np.std(accuracy)))
+    print('Validation rate: %2.5f+-%2.5f @ FAR=%2.5f' % (val, val_std, far))
+
+    val, val_std, far = facenet.calculate_val(thresholds, embeddings1, embeddings2,
+        np.asarray(actual_issame), 1e-2, nrof_folds=nrof_folds)
+    print('Validation rate: %2.5f+-%2.5f @ FAR=%2.5f' % (val, val_std, far))
+
+    val, val_std, far = facenet.calculate_val(thresholds, embeddings1, embeddings2,
+        np.asarray(actual_issame), 1e-1, nrof_folds=nrof_folds)
+    print('Validation rate: %2.5f+-%2.5f @ FAR=%2.5f' % (val, val_std, far))
+
+    auc = metrics.auc(fpr, tpr)
+    print('Area Under Curve (AUC): %1.3f' % auc)
+    eer = brentq(lambda x: 1. - x - interpolate.interp1d(fpr, tpr)(x), 0., 1.)
+    print('Equal Error Rate (EER): %1.3f' % eer)
+
+    return tpr, fpr, accuracy, val, val_std, far
+
 
 def get_paths(data_dir, test_pairs, total_nrof_images = 0):
     def select(array, num):
