@@ -47,7 +47,7 @@ def main(args):
         with tf.Session() as sess:
 
             # Get the paths for the corresponding images
-            paths, actual_issame = get_paths(os.path.expanduser(args.data_dir), args.test_pairs)
+            paths, actual_issame = get_paths(os.path.expanduser(args.data_dir), args.test_pairs, args.nrof_images)
             print("paths length: %d, actual_issame length: %d" % (len(paths), len(actual_issame)))
             n_same = actual_issame.count(True)#np.sum(actual_issame)
             n_diff = actual_issame.count(False)#np.sum(np.logical_not(actual_issame))
@@ -90,7 +90,13 @@ def main(args):
             eer = brentq(lambda x: 1. - x - interpolate.interp1d(fpr, tpr)(x), 0., 1.)
             print('Equal Error Rate (EER): %1.3f' % eer)
 
-def get_paths(data_dir, test_pairs):
+def get_paths(data_dir, test_pairs, total_nrof_images = 0):
+    def select(array, num):
+        length = len(array)
+        if num >= length:
+            return array
+        i_shuffle = np.random.permutation(length)[0:num]
+        return array[i_shuffle]
     path_list = []
     issame_list = []
     if os.path.isfile(test_pairs):
@@ -120,29 +126,32 @@ def get_paths(data_dir, test_pairs):
                     path_list += (path0, path1)
                     issame_list.append(False)
 
-    # assure the numb of same & diff is equal
     n_same = issame_list.count(True)
     n_diff = issame_list.count(False)
-    if n_same != n_diff:
-        path_array = np.reshape(np.array(path_list), (-1,2))
-        issame_array = np.array(issame_list)
-        index_same = np.reshape(np.where(issame_array), (-1))
-        index_diff = np.reshape(np.where(issame_array==False), (-1,))
-        if n_same > n_diff:
-            i_shuffle = np.random.permutation(n_same)[0:n_diff]
-            index_same = index_same[i_shuffle]
-            print(index_same)
-        else:
-            i_shuffle = np.random.permutation(n_diff)[0:n_same]
-            index_diff = index_diff[i_shuffle]
-            print(index_diff)
+    print("original num of same is %d, num of diff is %d" % (n_same, n_diff))
+    path_array = np.reshape(np.array(path_list), (-1,2))
+    issame_array = np.array(issame_list)
+    index_same = np.reshape(np.where(issame_array), (-1))
+    index_diff = np.reshape(np.where(issame_array==False), (-1,))
+    # assure the numb of same & diff is equal
+    if n_same > n_diff:
+        n_same = n_diff
+    else:
+        n_diff = n_same
 
-        # maybe current numpy has bugs, the np.concatenate() will return error
-        # when concatenate index_same and index_diff
-        index_final = list(index_same) + list(index_diff)
-        np.random.shuffle(index_final)
-        path_list = np.reshape(path_array[index_final], (-1,)).tolist()
-        issame_list = issame_array[index_final].tolist()
+    # assure total num of images is not exceeded
+    if total_nrof_images > 0 and n_same + n_diff > total_nrof_images:
+        n_same = n_diff = total_nrof_images//2
+
+    # select and shuffle dataset
+    index_same = select(index_same, n_same)
+    index_diff = select(index_diff, n_diff)
+    # maybe current numpy has bugs, the np.concatenate() will return error
+    # when concatenate index_same and index_diff
+    index_final = list(index_same) + list(index_diff)
+    np.random.shuffle(index_final)
+    path_list = np.reshape(path_array[index_final], (-1,)).tolist()
+    issame_list = issame_array[index_final].tolist()
 
     with open(test_pairs, "w") as f:
         for i in range(len(issame_list)):
@@ -164,6 +173,8 @@ def parse_arguments(argv):
         help='Image size (height, width) in pixels.', default=160)
     parser.add_argument('--test_pairs', type=str,
         help='The file containing the pairs to use for validation. Will generate one if the specified file not exist', default='data/test_pairs.txt')
+    parser.add_argument('--nrof_images', type=int,
+        help='Number of images used for testing.', default=0)
     parser.add_argument('--nrof_folds', type=int,
         help='Number of folds to use for cross validation. Mainly used for testing.', default=10)
     return parser.parse_args(argv)
