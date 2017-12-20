@@ -438,6 +438,7 @@ def calculate_roc(thresholds, embeddings1, embeddings2, actual_issame, nrof_fold
         for threshold_idx, threshold in enumerate(thresholds):
             tprs[fold_idx,threshold_idx], fprs[fold_idx,threshold_idx], _ = calculate_accuracy(threshold, dist[test_set], actual_issame[test_set])
         _, _, accuracy[fold_idx] = calculate_accuracy(thresholds[best_threshold_index], dist[test_set], actual_issame[test_set])
+        print("Fold %d, the best threshold is %f" % (fold_idx, thresholds[best_threshold_index]))
           
     tpr = np.mean(tprs,0)
     fpr = np.mean(fprs,0)
@@ -482,7 +483,8 @@ def calculate_val(thresholds, embeddings1, embeddings2, actual_issame, far_targe
             threshold = f(far_target)
         else:
             threshold = 0.0
-    
+
+        print("Fold %d, target far: %f, threhold: %f" % (fold_idx, far_target, threshold))
         val[fold_idx], far[fold_idx] = calculate_val_far(threshold, dist[test_set], actual_issame[test_set])
   
     val_mean = np.mean(val)
