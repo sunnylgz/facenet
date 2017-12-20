@@ -97,6 +97,16 @@ def get_paths(data_dir, test_pairs, total_nrof_images = 0):
             return array
         i_shuffle = np.random.permutation(length)[0:num]
         return array[i_shuffle]
+
+    class IndexClass():
+        "Stores the class/index for an image"
+        def __init__(self, cls, idx):
+            self.cls = cls
+            self.idx = idx
+
+        def __str__(self):
+            return "class: %d, index: %d" % (self.cls, self.idx)
+
     path_list = []
     issame_list = []
     if os.path.isfile(test_pairs):
@@ -113,23 +123,25 @@ def get_paths(data_dir, test_pairs, total_nrof_images = 0):
     test_set = facenet.get_dataset(data_dir)
 
     nrof_classes = len(test_set)
+    path_list_i = []
     for i in range(nrof_classes):
         nrof_images = len(test_set[i])
         for j in range(nrof_images):
-            path0 = test_set[i].image_paths[j]
+            path0 = IndexClass(i,j)#test_set[i].image_paths[j]
             for k in range(j+1, nrof_images):
-                path1 = test_set[i].image_paths[k]
-                path_list += (path0, path1)
+                path1 = IndexClass(i,k)#test_set[i].image_paths[k]
+                path_list_i += (path0, path1)
                 issame_list.append(True)
             for k in range(i+1, nrof_classes):
-                for path1 in test_set[k].image_paths:
-                    path_list += (path0, path1)
+                for l in range(len(test_set[k].image_paths)):
+                    path1 = IndexClass(k,l)
+                    path_list_i += (path0, path1)
                     issame_list.append(False)
 
     n_same = issame_list.count(True)
     n_diff = issame_list.count(False)
     print("original num of same is %d, num of diff is %d" % (n_same, n_diff))
-    path_array = np.reshape(np.array(path_list), (-1,2))
+    path_array = np.reshape(np.array(path_list_i), (-1,2))
     issame_array = np.array(issame_list)
     index_same = np.reshape(np.where(issame_array), (-1))
     index_diff = np.reshape(np.where(issame_array==False), (-1,))
@@ -150,8 +162,11 @@ def get_paths(data_dir, test_pairs, total_nrof_images = 0):
     # when concatenate index_same and index_diff
     index_final = list(index_same) + list(index_diff)
     np.random.shuffle(index_final)
-    path_list = np.reshape(path_array[index_final], (-1,)).tolist()
+    path_list_i = np.reshape(path_array[index_final], (-1,)).tolist()
     issame_list = issame_array[index_final].tolist()
+
+    for path_i in path_list_i:
+        path_list.append(test_set[path_i.cls].image_paths[path_i.idx])
 
     with open(test_pairs, "w") as f:
         for i in range(len(issame_list)):
