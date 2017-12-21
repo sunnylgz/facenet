@@ -135,6 +135,8 @@ def get_paths(data_dir, test_pairs, total_nrof_images = 0):
         with open(test_pairs, "r") as f:
             for line in f:
                 path0,path1,is_same = line.split(',')
+                path0 = os.path.join(data_dir, path0)
+                path1 = os.path.join(data_dir, path1)
                 path_list += (path0, path1)
                 issame_list.append(bool(int(is_same)))
         print("Load information from ", test_pairs)
@@ -192,7 +194,10 @@ def get_paths(data_dir, test_pairs, total_nrof_images = 0):
 
     with open(test_pairs, "w") as f:
         for i in range(len(issame_list)):
-            f.write(path_list[2*i] + ',' + path_list[2*i+1] + ',' + str(int(issame_list[i]))+'\n')
+            # split relative path to 'data_dir'
+            path0 = path_list[2*i].partition(data_dir)[2]
+            path1 = path_list[2*i+1].partition(data_dir)[2]
+            f.write(path0 + ',' + path1 + ',' + str(int(issame_list[i]))+'\n')
         print("Dump information to ", test_pairs)
 
     return path_list, issame_list
