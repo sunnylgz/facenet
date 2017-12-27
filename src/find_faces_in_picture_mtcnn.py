@@ -38,6 +38,25 @@ import facenet
 import datetime,time
 import align.detect_face
 
+def drawRectange(draw, rect, width = 1, outline = None, fill = None):
+  if width > 1:
+    for x in range(-width//2, width//2):
+      box = (rect[0] - x, rect[1] - x, rect[2] + x, rect[3] + x)
+      draw.rectangle(box, outline=outline, fill=fill)
+  else:
+    draw.rectangle(rect, outline=outline, fill=fill)
+
+def drawPoint(draw, xy, width = 1, fill = None):
+  if width > 1:
+    xs = xy[0::2]
+    ys = xy[1::2]
+
+    for i in range(len(xs)):
+      box = (xs[i] - width//2, ys[i] - width//2, xs[i] + width//2, ys[i] + width//2)
+      draw.ellipse(box, fill=fill)
+  else:
+    draw.point(xy, fill=fill)
+
 def main(args):
   print('Creating networks and loading parameters')
   
@@ -47,7 +66,7 @@ def main(args):
       with sess.as_default():
           pnet, rnet, onet = align.detect_face.create_mtcnn(sess, None)
   minsize = 20 # minimum size of face
-  threshold = [ 0.6, 0.7, 0.7 ]  # three steps's threshold
+  threshold = [ 0.6, 0.7, 0.9 ]  # three steps's threshold
   factor = 0.709 # scale factor
 
   img = misc.imread(os.path.expanduser(args.image), mode='RGB')
@@ -77,9 +96,9 @@ def main(args):
       landmarks = points[p_shape,i]
       print("A face is located at pixel location Top: {}, Left: {}, Bottom: {}, Right: {}".format(top, left, bottom, right))
 
-      draw.rectangle((left, top, right, bottom), outline='green')
-      draw.text((left,top), "%.2f" % (face_location[4]), fill='green')
-      draw.point((landmarks), fill='green')
+      drawRectange(draw, (left, top, right, bottom), width = 4, outline='green')
+      draw.text((left+4,top+4), "%.2f" % (face_location[4]), fill='green')
+      drawPoint(draw, (landmarks), width = 3, fill='green')
 
       if args.dump:
         face_image = img[int(top):int(bottom), int(left):int(right)]
