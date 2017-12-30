@@ -58,6 +58,31 @@ def drawPoint(draw, xy, width = 1, fill = None):
   else:
     draw.point(xy, fill=fill)
 
+MIN_INPUT_SIZE = 160
+def faster_face_detect(img, minsize, pnet, rnet, onet, threshold, factor):
+  #print(img.shape)
+  h=img.shape[0]
+  w=img.shape[1]
+  minl=np.amin([h, w])
+  print("original image is %dx%d" % (w, h))
+
+  scale = 1
+  if minl > MIN_INPUT_SIZE:
+    scale = minl // MIN_INPUT_SIZE
+    hs=int(np.ceil(h/scale))
+    ws=int(np.ceil(w/scale))
+    #im_data = imresample(img, (hs, ws))
+    im_data = cv2.resize(img, (ws, hs), interpolation=cv2.INTER_AREA)
+    print("scaled image is %dx%d" % (ws, hs))
+  else:
+    im_data = img
+
+  face_locations, points = align.detect_face.detect_face(im_data, minsize, pnet, rnet, onet, threshold, factor)
+  #for face_location in face_locations:
+  #  face_location[0:4] = face_location[0:4] * scale
+
+  return face_locations, points, scale
+
 def main(args):
   print('Creating networks and loading parameters')
   
@@ -72,14 +97,18 @@ def main(args):
   total_cpu_time = 0
   total_real_time = 0
 
+  video = args.video or 0 # if args.video == '': open camera
   videoCapture = cv2.VideoCapture(args.video)
   fps = videoCapture.get(cv2.CAP_PROP_FPS)
   size = (int(videoCapture.get(cv2.CAP_PROP_FRAME_WIDTH)),   
           int(videoCapture.get(cv2.CAP_PROP_FRAME_HEIGHT)))
+  print("fps = {}, size = {}".format(fps, size))
 
   if not videoCapture.isOpened():
-    print("open video failed")
+    sys.exit("open video failed")
 
+  if args.out:
+    videoWriter = cv2.VideoWriter(args.out, cv2.VideoWriter_fourcc(*'H264'), fps, size)
   count = 0
   while True:
     success, frame = videoCapture.read()
@@ -90,7 +119,7 @@ def main(args):
     start_c = time.clock()
     
     img = frame#misc.imread(os.path.expanduser(args.image), mode='RGB')
-    face_locations, points = align.detect_face.detect_face(img, minsize, pnet, rnet, onet, threshold, factor)
+    face_locations, points, scale = faster_face_detect(img, minsize, pnet, rnet, onet, threshold, factor)
 
     end_t = time.time()
     end_c = time.clock()
@@ -107,27 +136,22 @@ def main(args):
     for face_location in face_locations:
 
         # Print the location of each face in this image
-        left, top, right, bottom = face_location[0:4]
-        landmarks = points[p_shape,i]
+        left, top, right, bottom = face_location[0:4] * scale
+        landmarks = points[p_shape,i] * scale
         #print("A face is located at pixel location Top: {}, Left: {}, Bottom: {}, Right: {}".format(top, left, bottom, right))
 
         drawRectange(draw, (left, top, right, bottom), width = 4, outline='green')
         draw.text((left+4,top+4), "%.2f" % (face_location[4]), fill='green')
         drawPoint(draw, (landmarks), width = 3, fill='green')
 
-        if args.dump:
-          face_image = img[int(top):int(bottom), int(left):int(right)]
-          pil_image = Image.fromarray(face_image)
-          pil_image.save("%d.jpg"%i)
         i += 1
     if args.out:
-      pil_image.save(args.out)
+      videoWriter.write(np.array(pil_image))
     else:
-      #pil_image.show()
       cv2.imshow("Oto Video", np.array(pil_image))
 
     count = count + 1
-    #videoWriter.write(frame)
+
     if cv2.waitKey(1) & 0xFF == ord('q'):
       break
 
@@ -139,11 +163,8 @@ def main(args):
 def parse_arguments(argv):
     parser = argparse.ArgumentParser()
     
-    parser.add_argument('video', type=str, help='Video to load')
+    parser.add_argument('--video', type=str, default = '', help='Video to load')
     parser.add_argument('-o', '--out', type=str, default = '', help='save output to disk')
-    parser.add_argument('--dump', action="store_true",
-                        default=False,
-                        help='dump face cropped results')
     parser.add_argument('--gpu_memory_fraction', type=float,
         help='Upper bound on the amount of GPU memory that will be used by the process.', default=1.0)
     return parser.parse_args(argv)
