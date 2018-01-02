@@ -91,7 +91,7 @@ def main(args):
             print('Number of batches: ', nrof_batches)
             embedding_size = embeddings.get_shape()[1]
             emb_array = np.zeros((nrof_images, embedding_size))
-            start_time = time.time()
+            run_time = 0
 
             for i in range(nrof_batches):
                 if i == nrof_batches -1:
@@ -105,12 +105,14 @@ def main(args):
                     images = load_and_align_data(image_list[i*batch_size:n], args.image_size, args.margin, args.gpu_memory_fraction)
                 feed_dict = { images_placeholder: images, phase_train_placeholder:False }
                 # Use the facenet model to calcualte embeddings
+                start_time = time.time()
                 embed = sess.run(embeddings, feed_dict=feed_dict)
                 emb_array[i*batch_size:n, :] = embed
+                run_time += time.time() - start_time
                 print('Completed batch', i+1, 'of', nrof_batches)
 
-            run_time = time.time() - start_time
             print('Run time: ', run_time)
+            print('FPS is: %.2f' % (nrof_images/run_time))
 
             #   export emedings and labels
             label_list  = np.array(label_list)
