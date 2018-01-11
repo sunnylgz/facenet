@@ -177,7 +177,8 @@ def main(args):
       img = frame#misc.imread(os.path.expanduser(args.image), mode='RGB')
       face_locations, points, scale = faster_face_detect(img, minsize, pnet, rnet, onet, threshold, factor)
       faces = crop_face(img, face_locations, scale)
-      face_embs = emb_fun(faces)
+      if len(faces):
+        face_embs = emb_fun(faces)
 
       #print("I found {} face(s) in this photograph.".format(len(face_locations)))
 
