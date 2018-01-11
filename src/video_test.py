@@ -41,6 +41,7 @@ import align.detect_face
 __debug = True
 margin = 44 # Margin for the crop around the bounding box (height, width) in pixels.
 image_size = 160 # Image size (height, width) of cropped face in pixels.
+cnt_skip_frames = 3
 
 def drawRectange(draw, rect, width = 1, outline = None, fill = None):
   if width > 1:
@@ -163,38 +164,39 @@ def main(args):
   if args.out:
     videoWriter = cv2.VideoWriter(args.out, cv2.VideoWriter_fourcc(*'H264'), fps, size)
   count = 0
+  if __debug:
+    start_t = time.time()
+    start_c = time.clock()
   while True:
     success, frame = videoCapture.read()
     if not success:
       break
 
-    if __debug:
-      start_t = time.time()
-      start_c = time.clock()
-    
-    img = frame#misc.imread(os.path.expanduser(args.image), mode='RGB')
-    face_locations, points, scale = faster_face_detect(img, minsize, pnet, rnet, onet, threshold, factor)
-    faces = crop_face(img, face_locations, scale)
-    face_embs = emb_fun(faces)
 
-    #print("I found {} face(s) in this photograph.".format(len(face_locations)))
+    if count % (cnt_skip_frames+1) == 0:
+      img = frame#misc.imread(os.path.expanduser(args.image), mode='RGB')
+      face_locations, points, scale = faster_face_detect(img, minsize, pnet, rnet, onet, threshold, factor)
+      faces = crop_face(img, face_locations, scale)
+      face_embs = emb_fun(faces)
 
-    pil_image = Image.fromarray(img)
-    draw = ImageDraw.Draw(pil_image)
-    p_shape = [0,5,1,6,2,7,3,8,4,9]
-    i = 0
-    for face_location in face_locations:
+      #print("I found {} face(s) in this photograph.".format(len(face_locations)))
 
-        # Print the location of each face in this image
-        left, top, right, bottom = face_location[0:4] * scale
-        landmarks = points[p_shape,i] * scale
-        #print("A face is located at pixel location Top: {}, Left: {}, Bottom: {}, Right: {}".format(top, left, bottom, right))
+      pil_image = Image.fromarray(img)
+      draw = ImageDraw.Draw(pil_image)
+      p_shape = [0,5,1,6,2,7,3,8,4,9]
+      i = 0
+      for face_location in face_locations:
 
-        drawRectange(draw, (left, top, right, bottom), width = 4, outline='green')
-        draw.text((left+4,top+4), "%.2f" % (face_location[4]), fill='green')
-        drawPoint(draw, (landmarks), width = 3, fill='green')
+          # Print the location of each face in this image
+          left, top, right, bottom = face_location[0:4] * scale
+          landmarks = points[p_shape,i] * scale
+          #print("A face is located at pixel location Top: {}, Left: {}, Bottom: {}, Right: {}".format(top, left, bottom, right))
 
-        i += 1
+          drawRectange(draw, (left, top, right, bottom), width = 4, outline='green')
+          draw.text((left+4,top+4), "%.2f" % (face_location[4]), fill='green')
+          drawPoint(draw, (landmarks), width = 3, fill='green')
+
+          i += 1
     if args.out:
       videoWriter.write(np.array(pil_image))
     else:
@@ -202,17 +204,15 @@ def main(args):
 
     count = count + 1
 
-    if __debug:
-      end_t = time.time()
-      end_c = time.clock()
-
-      total_cpu_time += end_c - start_c
-      total_real_time += end_t - start_t
-
     if cv2.waitKey(1) & 0xFF == ord('q'):
       break
 
   if __debug:
+    end_t = time.time()
+    end_c = time.clock()
+
+    total_cpu_time += end_c - start_c
+    total_real_time += end_t - start_t
     print("The inference time cost: %.2fs, fps: %.2f" % (total_real_time, count/total_real_time))
   videoCapture.release()
   cv2.destroyAllWindows()
