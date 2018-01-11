@@ -1,4 +1,4 @@
-#! /usr/bin/python3
+#! /usr/bin/env python3
 """find faces from input image based on mtcnn and locate the locations and landmarks
 """
 # MIT License
@@ -38,6 +38,9 @@ import cv2
 import facenet
 import datetime,time
 import align.detect_face
+__debug = True
+margin = 44 # Margin for the crop around the bounding box (height, width) in pixels.
+image_size = 160 # Image size (height, width) of cropped face in pixels.
 
 def drawRectange(draw, rect, width = 1, outline = None, fill = None):
   if width > 1:
@@ -64,7 +67,7 @@ def faster_face_detect(img, minsize, pnet, rnet, onet, threshold, factor):
   h=img.shape[0]
   w=img.shape[1]
   minl=np.amin([h, w])
-  print("original image is %dx%d" % (w, h))
+  #print("original image is %dx%d" % (w, h))
 
   scale = 1
   if minl > MIN_INPUT_SIZE:
@@ -73,7 +76,7 @@ def faster_face_detect(img, minsize, pnet, rnet, onet, threshold, factor):
     ws=int(np.ceil(w/scale))
     #im_data = imresample(img, (hs, ws))
     im_data = cv2.resize(img, (ws, hs), interpolation=cv2.INTER_AREA)
-    print("scaled image is %dx%d" % (ws, hs))
+    #print("scaled image is %dx%d" % (ws, hs))
   else:
     im_data = img
 
@@ -83,6 +86,54 @@ def faster_face_detect(img, minsize, pnet, rnet, onet, threshold, factor):
 
   return face_locations, points, scale
 
+def create_facenet(facenet_model):
+  if __debug:
+    start_t = time.time()
+    start_c = time.clock()
+
+  with tf.Graph().as_default():
+    sess = tf.Session()
+    with sess.as_default():
+      # Load the model
+      facenet.load_model(facenet_model)
+
+      if __debug:
+        end_t = time.time()
+        end_c = time.clock()
+
+        elapsed_real_time = end_t - start_t
+        elapsed_user_time = end_c - start_c
+        print("load face model cost (real/user): %.2fs/%.2fs" % (elapsed_real_time, elapsed_user_time))
+        start_t,start_c = end_t,end_c
+
+      # Get input and output tensors
+      images_placeholder = tf.get_default_graph().get_tensor_by_name("input:0")
+      embeddings = tf.get_default_graph().get_tensor_by_name("embeddings:0")
+      phase_train_placeholder = tf.get_default_graph().get_tensor_by_name("phase_train:0")
+
+      # Run forward pass to calculate embeddings
+      emb_fun = lambda images : sess.run(embeddings, feed_dict={ images_placeholder: images, phase_train_placeholder:False })
+
+  return emb_fun
+
+def crop_face(img, bounding_boxes, scale):
+  img_size = np.asarray(img.shape)[0:2]
+
+  prewhitened_faces = []
+  for bounding_box in bounding_boxes:
+    det = np.squeeze(bounding_box[0:4]) * scale
+    bb = np.zeros(4, dtype=np.int32)
+    bb[0] = np.maximum(det[0]-margin/2, 0)
+    bb[1] = np.maximum(det[1]-margin/2, 0)
+    bb[2] = np.minimum(det[2]+margin/2, img_size[1])
+    bb[3] = np.minimum(det[3]+margin/2, img_size[0])
+    cropped = img[bb[1]:bb[3],bb[0]:bb[2],:]
+    aligned = misc.imresize(cropped, (image_size, image_size), interp='bilinear')
+    prewhitened_face = facenet.prewhiten(aligned)
+    prewhitened_faces.append(prewhitened_face)
+
+  return prewhitened_faces
+
 def main(args):
   print('Creating networks and loading parameters')
   
@@ -91,6 +142,8 @@ def main(args):
       sess = tf.Session()
       with sess.as_default():
           pnet, rnet, onet = align.detect_face.create_mtcnn(sess, None)
+
+  emb_fun = create_facenet(args.model)
   minsize = 20 # minimum size of face
   threshold = [ 0.6, 0.7, 0.9 ]  # three steps's threshold
   factor = 0.709 # scale factor
@@ -115,17 +168,14 @@ def main(args):
     if not success:
       break
 
-    start_t = time.time()
-    start_c = time.clock()
+    if __debug:
+      start_t = time.time()
+      start_c = time.clock()
     
     img = frame#misc.imread(os.path.expanduser(args.image), mode='RGB')
     face_locations, points, scale = faster_face_detect(img, minsize, pnet, rnet, onet, threshold, factor)
-
-    end_t = time.time()
-    end_c = time.clock()
-
-    total_cpu_time += end_c - start_c
-    total_real_time += end_t - start_t
+    faces = crop_face(img, face_locations, scale)
+    face_embs = emb_fun(faces)
 
     #print("I found {} face(s) in this photograph.".format(len(face_locations)))
 
@@ -152,10 +202,18 @@ def main(args):
 
     count = count + 1
 
+    if __debug:
+      end_t = time.time()
+      end_c = time.clock()
+
+      total_cpu_time += end_c - start_c
+      total_real_time += end_t - start_t
+
     if cv2.waitKey(1) & 0xFF == ord('q'):
       break
 
-  print("The inference time cost: %.2fs, fps: %.2f" % (total_real_time, count/total_real_time))
+  if __debug:
+    print("The inference time cost: %.2fs, fps: %.2f" % (total_real_time, count/total_real_time))
   videoCapture.release()
   cv2.destroyAllWindows()
 
@@ -164,6 +222,7 @@ def parse_arguments(argv):
     parser = argparse.ArgumentParser()
     
     parser.add_argument('--video', type=str, default = '', help='Video to load')
+    parser.add_argument('--model', type=str, default = './checkpoint', help='Facenet model, either to be a checkpoint folder or pb file')
     parser.add_argument('-o', '--out', type=str, default = '', help='save output to disk')
     parser.add_argument('--gpu_memory_fraction', type=float,
         help='Upper bound on the amount of GPU memory that will be used by the process.', default=1.0)
