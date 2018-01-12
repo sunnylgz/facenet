@@ -87,33 +87,30 @@ def faster_face_detect(img, minsize, pnet, rnet, onet, threshold, factor):
 
   return face_locations, points, scale
 
-def create_facenet(facenet_model):
+def create_facenet(sess, facenet_model):
   if __debug:
     start_t = time.time()
     start_c = time.clock()
 
-  with tf.Graph().as_default():
-    sess = tf.Session()
-    with sess.as_default():
-      # Load the model
-      facenet.load_model(facenet_model)
+  # Load the model
+  facenet.load_model(facenet_model)
 
-      if __debug:
-        end_t = time.time()
-        end_c = time.clock()
+  if __debug:
+    end_t = time.time()
+    end_c = time.clock()
 
-        elapsed_real_time = end_t - start_t
-        elapsed_user_time = end_c - start_c
-        print("load face model cost (real/user): %.2fs/%.2fs" % (elapsed_real_time, elapsed_user_time))
-        start_t,start_c = end_t,end_c
+    elapsed_real_time = end_t - start_t
+    elapsed_user_time = end_c - start_c
+    print("load face model cost (real/user): %.2fs/%.2fs" % (elapsed_real_time, elapsed_user_time))
+    start_t,start_c = end_t,end_c
 
-      # Get input and output tensors
-      images_placeholder = tf.get_default_graph().get_tensor_by_name("input:0")
-      embeddings = tf.get_default_graph().get_tensor_by_name("embeddings:0")
-      phase_train_placeholder = tf.get_default_graph().get_tensor_by_name("phase_train:0")
+  # Get input and output tensors
+  images_placeholder = tf.get_default_graph().get_tensor_by_name("input:0")
+  embeddings = tf.get_default_graph().get_tensor_by_name("embeddings:0")
+  phase_train_placeholder = tf.get_default_graph().get_tensor_by_name("phase_train:0")
 
-      # Run forward pass to calculate embeddings
-      emb_fun = lambda images : sess.run(embeddings, feed_dict={ images_placeholder: images, phase_train_placeholder:False })
+  # Run forward pass to calculate embeddings
+  emb_fun = lambda images : sess.run(embeddings, feed_dict={ images_placeholder: images, phase_train_placeholder:False })
 
   return emb_fun
 
@@ -144,7 +141,7 @@ def main(args):
       with sess.as_default():
           pnet, rnet, onet = align.detect_face.create_mtcnn(sess, None)
 
-  emb_fun = create_facenet(args.model)
+          emb_fun = create_facenet(sess, args.model)
   minsize = 20 # minimum size of face
   threshold = [ 0.6, 0.7, 0.9 ]  # three steps's threshold
   factor = 0.709 # scale factor
