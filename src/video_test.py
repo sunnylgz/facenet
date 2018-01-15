@@ -41,7 +41,7 @@ import align.detect_face
 __debug = True
 margin = 44 # Margin for the crop around the bounding box (height, width) in pixels.
 image_size = 160 # Image size (height, width) of cropped face in pixels.
-cnt_skip_frames = 3
+cnt_skip_frames = 0
 
 def drawRectange(draw, rect, width = 1, outline = None, fill = None):
   if width > 1:
@@ -114,6 +114,14 @@ def create_facenet(sess, facenet_model):
 
   return emb_fun
 
+def create_mtcnn(sess, model):
+    facenet.load_model(model)
+
+    pnet_fun = lambda img : sess.run(('pnet/conv4-2/BiasAdd:0', 'pnet/prob1:0'), feed_dict={'pnet/input:0':img})
+    rnet_fun = lambda img : sess.run(('rnet/conv5-2/conv5-2:0', 'rnet/prob1:0'), feed_dict={'rnet/input:0':img})
+    onet_fun = lambda img : sess.run(('onet/conv6-2/conv6-2:0', 'onet/conv6-3/conv6-3:0', 'onet/prob1:0'), feed_dict={'onet/input:0':img})
+    return pnet_fun, rnet_fun, onet_fun
+
 def crop_face(img, bounding_boxes, scale):
   img_size = np.asarray(img.shape)[0:2]
 
@@ -139,9 +147,11 @@ def main(args):
       #gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=args.gpu_memory_fraction)
       sess = tf.Session()
       with sess.as_default():
-          pnet, rnet, onet = align.detect_face.create_mtcnn(sess, None)
+          pnet, rnet, onet = create_mtcnn(sess, "./frozen_mtcnn.pb")
 
-          emb_fun = create_facenet(sess, args.model)
+
+          if args.model:
+            emb_fun = create_facenet(sess, args.model)
   minsize = 20 # minimum size of face
   threshold = [ 0.6, 0.7, 0.9 ]  # three steps's threshold
   factor = 0.709 # scale factor
@@ -173,9 +183,10 @@ def main(args):
     if count % (cnt_skip_frames+1) == 0:
       img = frame#misc.imread(os.path.expanduser(args.image), mode='RGB')
       face_locations, points, scale = faster_face_detect(img, minsize, pnet, rnet, onet, threshold, factor)
-      faces = crop_face(img, face_locations, scale)
-      if len(faces):
-        face_embs = emb_fun(faces)
+      if args.model:
+        faces = crop_face(img, face_locations, scale)
+        if len(faces):
+          face_embs = emb_fun(faces)
 
       #print("I found {} face(s) in this photograph.".format(len(face_locations)))
 
@@ -220,7 +231,7 @@ def parse_arguments(argv):
     parser = argparse.ArgumentParser()
     
     parser.add_argument('--video', type=str, default = '', help='Video to load')
-    parser.add_argument('--model', type=str, default = './checkpoint', help='Facenet model, either to be a checkpoint folder or pb file')
+    parser.add_argument('--model', type=str, default = '', help='Facenet model, either to be a checkpoint folder or pb file')
     parser.add_argument('-o', '--out', type=str, default = '', help='save output to disk')
     parser.add_argument('--gpu_memory_fraction', type=float,
         help='Upper bound on the amount of GPU memory that will be used by the process.', default=1.0)
