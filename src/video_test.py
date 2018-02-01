@@ -33,6 +33,7 @@ import argparse
 from PIL import Image, ImageDraw
 import tensorflow as tf
 from scipy import misc
+import pickle
 import numpy as np
 import cv2
 import facenet
@@ -159,7 +160,9 @@ def main(args):
   total_real_time = 0
 
   video = args.video or 0 # if args.video == '': open camera
-  videoCapture = cv2.VideoCapture(args.video)
+  videoCapture = cv2.VideoCapture(video)
+  #videoCapture.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+  #videoCapture.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
   fps = videoCapture.get(cv2.CAP_PROP_FPS)
   size = (int(videoCapture.get(cv2.CAP_PROP_FRAME_WIDTH)),   
           int(videoCapture.get(cv2.CAP_PROP_FRAME_HEIGHT)))
@@ -188,6 +191,15 @@ def main(args):
         if len(faces):
           face_embs = emb_fun(faces)
 
+          if args.classifier_filename:
+            classifier_filename_exp = os.path.expanduser(args.classifier_filename)
+            with open(classifier_filename_exp, 'rb') as infile:
+              (model, class_names) = pickle.load(infile)
+
+            predictions = model.predict_proba(face_embs)
+            best_class_indices = np.argmax(predictions, axis=1)
+            best_class_probabilities = predictions[np.arange(len(best_class_indices)), best_class_indices]
+
       #print("I found {} face(s) in this photograph.".format(len(face_locations)))
 
       pil_image = Image.fromarray(img)
@@ -202,7 +214,12 @@ def main(args):
           #print("A face is located at pixel location Top: {}, Left: {}, Bottom: {}, Right: {}".format(top, left, bottom, right))
 
           drawRectange(draw, (left, top, right, bottom), width = 4, outline='green')
-          draw.text((left+4,top+4), "%.2f" % (face_location[4]), fill='green')
+          if args.classifier_filename:
+            class_name = class_names[best_class_indices[i]] if best_class_probabilities[i] > 0.9 else 'unknow'
+            #print('%4d  %s: %.3f' % (i, class_name, best_class_probabilities[i]))
+            draw.text((left+4,top+4), "%s %.2f" % (class_name,best_class_probabilities[i]), fill='green')
+          else:
+            draw.text((left+4,top+4), "%.2f" % (face_location[4]), fill='green')
           drawPoint(draw, (landmarks), width = 3, fill='green')
 
           i += 1
@@ -235,6 +252,10 @@ def parse_arguments(argv):
     parser.add_argument('-o', '--out', type=str, default = '', help='save output to disk')
     parser.add_argument('--gpu_memory_fraction', type=float,
         help='Upper bound on the amount of GPU memory that will be used by the process.', default=1.0)
+    parser.add_argument('--classifier_filename',
+        type=str, default = '',
+        help='Classifier model file name as a pickle (.pkl) file. ' +
+        'For training this is the output and for classification this is an input.')
     return parser.parse_args(argv)
 
 if __name__ == '__main__':
