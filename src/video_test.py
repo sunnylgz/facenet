@@ -183,6 +183,7 @@ def main(args):
       break
 
 
+    pil_image = Image.fromarray(frame)
     if count % (cnt_skip_frames+1) == 0:
       img = frame#misc.imread(os.path.expanduser(args.image), mode='RGB')
       face_locations, points, scale = faster_face_detect(img, minsize, pnet, rnet, onet, threshold, factor)
@@ -202,7 +203,6 @@ def main(args):
 
       #print("I found {} face(s) in this photograph.".format(len(face_locations)))
 
-      pil_image = Image.fromarray(img)
       draw = ImageDraw.Draw(pil_image)
       p_shape = [0,5,1,6,2,7,3,8,4,9]
       i = 0
