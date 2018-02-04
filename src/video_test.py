@@ -39,10 +39,37 @@ import cv2
 import facenet
 import datetime,time
 import align.detect_face
+
 __debug = True
 margin = 44 # Margin for the crop around the bounding box (height, width) in pixels.
 image_size = 160 # Image size (height, width) of cropped face in pixels.
-cnt_skip_frames = 0
+cnt_skip_frames = 29
+
+# MEDIANFLOW has the lowest time cost
+# GOTURN has issue under opencv3.4.0
+# 
+def create_tracker(tracker_type = 'KCF'):
+  (major_ver, minor_ver, subminor_ver) = (cv2.__version__).split('.')
+  tracker_types = ['BOOSTING', 'MIL','KCF', 'TLD', 'MEDIANFLOW', 'GOTURN']
+  #tracker_type = tracker_types[2]
+
+  if int(minor_ver) < 3:
+    tracker = cv2.Tracker_create(tracker_type)
+  else:
+    if tracker_type == 'BOOSTING':
+      tracker = cv2.TrackerBoosting_create()
+    if tracker_type == 'MIL':
+      tracker = cv2.TrackerMIL_create()
+    if tracker_type == 'KCF':
+      tracker = cv2.TrackerKCF_create()
+    if tracker_type == 'TLD':
+      tracker = cv2.TrackerTLD_create()
+    if tracker_type == 'MEDIANFLOW':
+      tracker = cv2.TrackerMedianFlow_create()
+    if tracker_type == 'GOTURN':
+      tracker = cv2.TrackerGOTURN_create()
+
+  return tracker
 
 def drawRectange(draw, rect, width = 1, outline = None, fill = None):
   if width > 1:
@@ -64,7 +91,7 @@ def drawPoint(draw, xy, width = 1, fill = None):
     draw.point(xy, fill=fill)
 
 MIN_INPUT_SIZE = 160
-def faster_face_detect(img, minsize, pnet, rnet, onet, threshold, factor):
+def image_down_scale(img):
   #print(img.shape)
   h=img.shape[0]
   w=img.shape[1]
@@ -77,16 +104,12 @@ def faster_face_detect(img, minsize, pnet, rnet, onet, threshold, factor):
     hs=int(np.ceil(h/scale))
     ws=int(np.ceil(w/scale))
     #im_data = imresample(img, (hs, ws))
-    im_data = cv2.resize(img, (ws, hs), interpolation=cv2.INTER_AREA)
+    img_down = cv2.resize(img, (ws, hs), interpolation=cv2.INTER_AREA)
     #print("scaled image is %dx%d" % (ws, hs))
   else:
-    im_data = img
+    img_down = img
 
-  face_locations, points = align.detect_face.detect_face(im_data, minsize, pnet, rnet, onet, threshold, factor)
-  #for face_location in face_locations:
-  #  face_location[0:4] = face_location[0:4] * scale
-
-  return face_locations, points, scale
+  return img_down, scale
 
 def create_facenet(sess, facenet_model):
   if __debug:
@@ -177,6 +200,9 @@ def main(args):
   if __debug:
     start_t = time.time()
     start_c = time.clock()
+
+  trackers = []
+  tracker_cnt = 0
   while True:
     success, frame = videoCapture.read()
     if not success:
@@ -184,11 +210,12 @@ def main(args):
 
 
     pil_image = Image.fromarray(frame)
+    draw = ImageDraw.Draw(pil_image)
+    img_down,scale = image_down_scale(frame) #misc.imread(os.path.expanduser(args.image), mode='RGB')
     if count % (cnt_skip_frames+1) == 0:
-      img = frame#misc.imread(os.path.expanduser(args.image), mode='RGB')
-      face_locations, points, scale = faster_face_detect(img, minsize, pnet, rnet, onet, threshold, factor)
+      face_locations, points = align.detect_face.detect_face(img_down, minsize, pnet, rnet, onet, threshold, factor)
       if args.model:
-        faces = crop_face(img, face_locations, scale)
+        faces = crop_face(frame, face_locations, scale)
         if len(faces):
           face_embs = emb_fun(faces)
 
@@ -203,9 +230,9 @@ def main(args):
 
       #print("I found {} face(s) in this photograph.".format(len(face_locations)))
 
-      draw = ImageDraw.Draw(pil_image)
       p_shape = [0,5,1,6,2,7,3,8,4,9]
       i = 0
+      trackers.clear()
       for face_location in face_locations:
 
           # Print the location of each face in this image
@@ -221,6 +248,48 @@ def main(args):
           else:
             draw.text((left+4,top+4), "%.2f" % (face_location[4]), fill='green')
           drawPoint(draw, (landmarks), width = 3, fill='green')
+
+          left, top, right, bottom = face_location[0:4]
+          bbox = (left, top, right-left+1, bottom-top+1)
+          trackers.append(create_tracker(args.tracker))
+          trackers[i].init(img_down, bbox)
+          i += 1
+      #tracker_cnt = i
+    else:
+      face_locations = []
+      for tracker in trackers:
+        ok, bbox = tracker.update(img_down)
+        if ok:
+          left, top, right, bottom = (bbox[0], bbox[1], bbox[2] + bbox[0], bbox[3] + bbox[1])
+          face_locations.append([left, top, right, bottom])
+          drawRectange(draw, (left*scale, top*scale, right*scale, bottom*scale), width = 4, outline='green')
+
+      if args.model:
+        faces = crop_face(frame, face_locations, scale)
+        if len(faces):
+          face_embs = emb_fun(faces)
+
+          if args.classifier_filename:
+            classifier_filename_exp = os.path.expanduser(args.classifier_filename)
+            with open(classifier_filename_exp, 'rb') as infile:
+              (model, class_names) = pickle.load(infile)
+
+            predictions = model.predict_proba(face_embs)
+            best_class_indices = np.argmax(predictions, axis=1)
+            best_class_probabilities = predictions[np.arange(len(best_class_indices)), best_class_indices]
+
+      i = 0
+      face_locations = np.array(face_locations)
+      for face_location in face_locations:
+
+          # Print the location of each face in this image
+          left, top, right, bottom = face_location[0:4] * scale
+
+          drawRectange(draw, (left, top, right, bottom), width = 4, outline='green')
+          if args.classifier_filename:
+            class_name = class_names[best_class_indices[i]] if best_class_probabilities[i] > 0.9 else 'unknow'
+            #print('%4d  %s: %.3f' % (i, class_name, best_class_probabilities[i]))
+            draw.text((left+4,top+4), "%s %.2f" % (class_name,best_class_probabilities[i]), fill='green')
 
           i += 1
     if args.out:
@@ -250,6 +319,7 @@ def parse_arguments(argv):
     parser.add_argument('--video', type=str, default = '', help='Video to load')
     parser.add_argument('--model', type=str, default = '', help='Facenet model, either to be a checkpoint folder or pb file')
     parser.add_argument('-o', '--out', type=str, default = '', help='save output to disk')
+    parser.add_argument('--tracker', type=str, default = 'KCF', help='Tracker type, \'BOOSTING\', \'MIL\',\'KCF\', \'TLD\', \'MEDIANFLOW\', \'GOTURN\'')
     parser.add_argument('--gpu_memory_fraction', type=float,
         help='Upper bound on the amount of GPU memory that will be used by the process.', default=1.0)
     parser.add_argument('--classifier_filename',
