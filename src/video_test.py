@@ -256,42 +256,20 @@ def main(args):
           i += 1
       #tracker_cnt = i
     else:
-      face_locations = []
+      i = 0
       for tracker in trackers:
         ok, bbox = tracker.update(img_down)
         if ok:
           left, top, right, bottom = (bbox[0], bbox[1], bbox[2] + bbox[0], bbox[3] + bbox[1])
-          face_locations.append([left, top, right, bottom])
-          drawRectange(draw, (left*scale, top*scale, right*scale, bottom*scale), width = 4, outline='green')
-
-      if args.model:
-        faces = crop_face(frame, face_locations, scale)
-        if len(faces):
-          face_embs = emb_fun(faces)
-
-          if args.classifier_filename:
-            classifier_filename_exp = os.path.expanduser(args.classifier_filename)
-            with open(classifier_filename_exp, 'rb') as infile:
-              (model, class_names) = pickle.load(infile)
-
-            predictions = model.predict_proba(face_embs)
-            best_class_indices = np.argmax(predictions, axis=1)
-            best_class_probabilities = predictions[np.arange(len(best_class_indices)), best_class_indices]
-
-      i = 0
-      face_locations = np.array(face_locations)
-      for face_location in face_locations:
-
-          # Print the location of each face in this image
-          left, top, right, bottom = face_location[0:4] * scale
-
+          left, top, right, bottom = (left*scale, top*scale, right*scale, bottom*scale)
           drawRectange(draw, (left, top, right, bottom), width = 4, outline='green')
+
           if args.classifier_filename:
             class_name = class_names[best_class_indices[i]] if best_class_probabilities[i] > 0.9 else 'unknow'
-            #print('%4d  %s: %.3f' % (i, class_name, best_class_probabilities[i]))
             draw.text((left+4,top+4), "%s %.2f" % (class_name,best_class_probabilities[i]), fill='green')
 
-          i += 1
+        i += 1
+
     if args.out:
       videoWriter.write(np.array(pil_image))
     else:
