@@ -43,7 +43,6 @@ import align.detect_face
 __debug = True
 margin = 44 # Margin for the crop around the bounding box (height, width) in pixels.
 image_size = 160 # Image size (height, width) of cropped face in pixels.
-cnt_skip_frames = 29
 
 # MEDIANFLOW has the lowest time cost
 # GOTURN has issue under opencv3.4.0
@@ -212,7 +211,7 @@ def main(args):
     pil_image = Image.fromarray(frame)
     draw = ImageDraw.Draw(pil_image)
     img_down,scale = image_down_scale(frame) #misc.imread(os.path.expanduser(args.image), mode='RGB')
-    if count % (cnt_skip_frames+1) == 0:
+    if count % (args.frame_skip_cnt+1) == 0:
       face_locations, points = align.detect_face.detect_face(img_down, minsize, pnet, rnet, onet, threshold, factor)
       if args.model:
         faces = crop_face(frame, face_locations, scale)
@@ -249,13 +248,14 @@ def main(args):
             draw.text((left+4,top+4), "%.2f" % (face_location[4]), fill='green')
           drawPoint(draw, (landmarks), width = 3, fill='green')
 
-          left, top, right, bottom = face_location[0:4]
-          bbox = (left, top, right-left+1, bottom-top+1)
-          trackers.append(create_tracker(args.tracker))
-          trackers[i].init(img_down, bbox)
+          if args.en_tracker:
+            left, top, right, bottom = face_location[0:4]
+            bbox = (left, top, right-left+1, bottom-top+1)
+            trackers.append(create_tracker(args.tracker))
+            trackers[i].init(img_down, bbox)
           i += 1
       #tracker_cnt = i
-    else:
+    elif args.en_tracker:
       i = 0
       for tracker in trackers:
         ok, bbox = tracker.update(img_down)
@@ -297,7 +297,11 @@ def parse_arguments(argv):
     parser.add_argument('--video', type=str, default = '', help='Video to load')
     parser.add_argument('--model', type=str, default = '', help='Facenet model, either to be a checkpoint folder or pb file')
     parser.add_argument('-o', '--out', type=str, default = '', help='save output to disk')
-    parser.add_argument('--tracker', type=str, default = 'KCF', help='Tracker type, \'BOOSTING\', \'MIL\',\'KCF\', \'TLD\', \'MEDIANFLOW\', \'GOTURN\'')
+    parser.add_argument('--frame_skip_cnt', type=int, default = 29, help='Number of frames to be skipped or use traditional tracking')
+    parser.add_argument('-t', '--en_tracker', action="store_true",
+                        default=False,
+                        help='enable face tracking')
+    parser.add_argument('--tracker', type=str, default = 'MEDIANFLOW', help='Tracker type, \'BOOSTING\', \'MIL\',\'KCF\', \'TLD\', \'MEDIANFLOW\', \'GOTURN\'')
     parser.add_argument('--gpu_memory_fraction', type=float,
         help='Upper bound on the amount of GPU memory that will be used by the process.', default=1.0)
     parser.add_argument('--classifier_filename',
